@@ -157,9 +157,9 @@
     let allData = [];
 
     // Replace with your actual Google Sheet ID and gid (sheet tab ID)
-    const sheetID = "2PACX-1vSM2rLNS81BkX4m5y44gaEHBTJWsUXMN0CyLWGaN6LGmVaYkqkKoZp5-V8I8vUw83ubari873irINEp"; // e.g. "1aBcD..." from https://docs.google.com/spreadsheets/d/1aBcD... 
+    const sheetID = "14iegStGgs20yLRkPDpds1oms8aLhuSOFxm1aE-d7tEE"; // e.g. "1aBcD..." from https://docs.google.com/spreadsheets/d/1aBcD... 
     const sheetName = "SecretariatData"; // Your tab name
-    const sheetURL = `https://docs.google.com/spreadsheets/d/e/ ${sheetID}/gviz/tq?tqx=out:csv&sheet=${sheetName}`;
+    const sheetURL = `https://docs.google.com/spreadsheets/d/${sheetID}/gviz/tq?tqx=out:csv&sheet=${sheetName}`;
 
     async function fetchData() {
       document.getElementById("loader").style.display = "block";
