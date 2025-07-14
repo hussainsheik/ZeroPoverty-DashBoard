@@ -6,8 +6,8 @@
   <title>Zerop Poverty - Secretariat Dashboard</title>
   <style>
     :root {
-      --bg-gradient: linear-gradient(135deg, rgb(103, 58, 183), rgb(255, 87, 34));
-      --card-bg: rgba(255, 255, 255, 0.05);
+      --bg-gradient: linear-gradient(135deg, rgb(75, 192, 192), rgb(255, 99, 132));
+      --card-bg: rgba(255, 255, 255, 0.1);
       --text-color: #fff;
     }
 
@@ -106,9 +106,9 @@
 
   <div class="container">
     <div class="filters">
-      <input type="text" id="searchInput" placeholder="Search by ID or Secretariat" oninput="filterTable()" />
-      <select id="idSelect" onchange="updateDashboard()"></select>
-      <button onclick="updateDashboard()">Refresh</button>
+      <input type="text" id="searchInput" placeholder="Search by Mandal or Secretariat" oninput="filterTable()" />
+      <select id="mandalSelect" onchange="filterByMandal()"></select>
+      <button onclick="fetchData()">Refresh</button>
     </div>
 
     <div class="row">
@@ -134,6 +134,7 @@
         <thead>
           <tr>
             <th>ID</th>
+            <th>Mandal</th>
             <th>Secretariat</th>
             <th>Families</th>
             <th>Adopted</th>
@@ -148,61 +149,54 @@
     <div class="loader" id="loader" style="display:none;">Loading data...</div>
   </div>
 
-  <div class="footer">Powered by Google Apps Script + Looker Studio Ready</div>
+  <div class="footer">Powered by Google Sheets + Chart.js</div>
 
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
   <script>
     let allData = [];
 
-    const scriptID = "AKfycbxKh1yvcZyG3km0kbJSeElEIh9JVxWK1UkrKnQMaepzhBOjQbxZvSpITx0Eb7tAeSUz"; // Replace with your actual Apps Script ID
+    // Replace with your actual Google Sheet ID and gid (sheet tab ID)
+    const sheetID = "2PACX-1vSM2rLNS81BkX4m5y44gaEHBTJWsUXMN0CyLWGaN6LGmVaYkqkKoZp5-V8I8vUw83ubari873irINEp"; // e.g. "1aBcD..." from https://docs.google.com/spreadsheets/d/1aBcD... 
+    const sheetName = "SecretariatData"; // Your tab name
+    const sheetURL = `https://docs.google.com/spreadsheets/d/e/ ${sheetID}/gviz/tq?tqx=out:csv&sheet=${sheetName}`;
 
-    async function fetchData(id = "all") {
+    async function fetchData() {
       document.getElementById("loader").style.display = "block";
 
-      const url = `https://script.google.com/macros/s/ ${scriptID}/exec?level=4&id=${id}`;
       try {
-        const res = await fetch(url);
+        const res = await fetch(sheetURL);
         const text = await res.text();
 
-        // If JSON response is expected, try this:
-        // const data = await res.json();
+        allData = parseSheetCSV(text);
 
-        // For now, assuming text-based output
-        if (text.startsWith("Success")) {
-          // Fetch full data if 'all'
-          if (id === "all") {
-            const fullDataRes = await fetch(`https://script.google.com/macros/s/ ${scriptID}/exec?level=4&id=all`);
-            const fullText = await fullDataRes.text();
-
-            // You can parse CSV or text output here if needed
-            console.log("Full Data Response:", fullText);
-
-            // For demo, assume we're pulling from a sample JSON
-            const sampleData = [
-              { ID: "105_56_2024", SecretariatName: "Secretariat A", TotalFamilies: 1200, TotalAdopted: 450, TotalMargadarsiMobilized: 236, TotalSecretariats: 10, CoveredSecretariats: 8 },
-              { ID: "105_56_2025", SecretariatName: "Secretariat B", TotalFamilies: 1500, TotalAdopted: 700, TotalMargadarsiMobilized: 300, TotalSecretariats: 12, CoveredSecretariats: 10 },
-              { ID: "105_56_2026", SecretariatName: "Secretariat C", TotalFamilies: 1000, TotalAdopted: 800, TotalMargadarsiMobilized: 150, TotalSecretariats: 15, CoveredSecretariats: 14 }
-            ];
-
-            allData = sampleData;
-            updateDashboard();
-          }
-        } else {
-          alert("Failed to fetch data");
-        }
-
+        populateMandalDropdown();
+        updateDashboard();
       } catch (err) {
-        console.error("Error fetching data:", err);
-        alert("Could not fetch data from server");
+        console.error("Error fetching sheet:", err);
+        alert("Failed to load data from Google Sheet");
       } finally {
         document.getElementById("loader").style.display = "none";
       }
     }
 
+    function parseSheetCSV(csvText) {
+      const rows = csvText.trim().split("\n");
+      const headers = rows[0].split(",");
+      const data = rows.slice(1).map(row => {
+        const values = row.split(",");
+        return headers.reduce((obj, header, i) => {
+          obj[header] = values[i];
+          return obj;
+        }, {});
+      });
+
+      return data.filter(d => d.ID && d.MandalName); // Filter invalid rows
+    }
+
     function updateDashboard(filtered = allData) {
-      const totalFamilies = filtered.reduce((sum, d) => sum + (parseInt(d.TotalFamilies) || 0), 0);
-      const totalAdopted = filtered.reduce((sum, d) => sum + (parseInt(d.TotalAdopted) || 0), 0);
+      const totalFamilies = filtered.reduce((sum, d) => sum + parseInt(d.TotalFamilies || 0), 0);
+      const totalAdopted = filtered.reduce((sum, d) => sum + parseInt(d.TotalAdopted || 0), 0);
       const adoptionRate = ((totalAdopted / totalFamilies) * 100).toFixed(1) + "%";
 
       document.getElementById('totalFamilies').textContent = totalFamilies;
@@ -213,13 +207,13 @@
       const datasets = [
         {
           label: 'Families',
-          data: filtered.map(d => d.TotalFamilies),
-          backgroundColor: 'rgba(103, 58, 183, 0.6)'
+           filtered.map(d => parseInt(d.TotalFamilies)),
+          backgroundColor: 'rgba(75, 192, 192, 0.6)'
         },
         {
           label: 'Adopted',
-          data: filtered.map(d => d.TotalAdopted),
-          backgroundColor: 'rgba(255, 87, 34, 0.6)'
+           filtered.map(d => parseInt(d.TotalAdopted)),
+          backgroundColor: 'rgba(255, 99, 132, 0.6)'
         }
       ];
 
@@ -228,7 +222,10 @@
       const ctx = document.getElementById('secretariatChart').getContext('2d');
       window.secretariatChart = new Chart(ctx, {
         type: 'bar',
-        data: { labels, datasets },
+         {
+          labels: labels,
+          datasets: datasets
+        },
         options: {
           responsive: true,
           plugins: {
@@ -248,6 +245,7 @@
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${row.ID}</td>
+          <td>${row.MandalName}</td>
           <td>${row.SecretariatName || "N/A"}</td>
           <td>${row.TotalFamilies}</td>
           <td>${row.TotalAdopted}</td>
@@ -261,28 +259,35 @@
     function filterTable() {
       const filter = document.getElementById('searchInput').value.toLowerCase();
       const filtered = allData.filter(d =>
-        d.ID.toLowerCase().includes(filter) ||
+        d.MandalName.toLowerCase().includes(filter) ||
         (d.SecretariatName && d.SecretariatName.toLowerCase().includes(filter))
       );
       updateDashboard(filtered);
     }
 
-    function populateIdDropdown() {
-      const select = document.getElementById("idSelect");
-      const uniqueIDs = [...new Set(allData.map(d => d.ID))];
-
-      select.innerHTML = '<option value="all">All Secretariats</option>';
-      uniqueIDs.forEach(id => {
+    function populateMandalDropdown() {
+      const mandals = [...new Set(allData.map(d => d.MandalName))];
+      const select = document.getElementById("mandalSelect");
+      select.innerHTML = '<option value="">All Mandal</option>';
+      mandals.forEach(mandal => {
         const option = document.createElement("option");
-        option.value = id;
-        option.textContent = id;
+        option.value = mandal;
+        option.textContent = mandal;
         select.appendChild(option);
       });
     }
 
-    // Initial load
+    function filterByMandal() {
+      const selectedMandal = document.getElementById("mandalSelect").value;
+      if (!selectedMandal) return updateDashboard();
+
+      const filtered = allData.filter(d => d.MandalName === selectedMandal);
+      updateDashboard(filtered);
+    }
+
+    // Initial Load
     window.onload = () => {
-      fetchData(); // Load sample data or real API
+      fetchData();
     };
   </script>
 </body>
