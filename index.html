@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Zerop Poverty - Secretariat Dashboard</title>
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, rgb(103, 58, 183), rgb(255, 87, 34));
+      --card-bg: rgba(255, 255, 255, 0.05);
+      --text-color: #fff;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg-gradient);
+      color: var(--text-color);
+      animation: gradientShift 15s ease infinite;
+    }
+
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    h1 {
+      text-align: center;
+      margin: 20px 0;
+      font-weight: bold;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      justify-content: center;
+    }
+
+    .filters input,
+    .filters select,
+    .filters button {
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+      font-size: 1rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      margin: 10px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    canvas {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+    }
+
+    th {
+      background: rgba(255,255,255,0.1);
+    }
+
+    .loader {
+      text-align: center;
+      margin: 40px 0;
+      font-size: 1.2rem;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 60px;
+      font-size: 0.9rem;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <h1>Zerop Poverty - Secretariat Dashboard</h1>
+
+  <div class="container">
+    <div class="filters">
+      <input type="text" id="searchInput" placeholder="Search by ID or Secretariat" oninput="filterTable()" />
+      <select id="idSelect" onchange="updateDashboard()"></select>
+      <button onclick="updateDashboard()">Refresh</button>
+    </div>
+
+    <div class="row">
+      <div class="card col-md-3">
+        <h5>Total Families</h5>
+        <p id="totalFamilies" class="fs-4">0</p>
+      </div>
+      <div class="card col-md-3">
+        <h5>Adopted Families</h5>
+        <p id="totalAdopted" class="fs-4">0</p>
+      </div>
+      <div class="card col-md-3">
+        <h5>% Adoption Rate</h5>
+        <p id="adoptionRate" class="fs-4">0%</p>
+      </div>
+    </div>
+
+    <canvas id="secretariatChart" height="100"></canvas>
+
+    <h3 class="mt-5">Secretariat-Level Data</h3>
+    <div class="table-responsive">
+      <table id="dataTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Secretariat</th>
+            <th>Families</th>
+            <th>Adopted</th>
+            <th>Margadarsi Mobilized</th>
+            <th>Secretariats Covered</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="loader" id="loader" style="display:none;">Loading data...</div>
+  </div>
+
+  <div class="footer">Powered by Google Apps Script + Looker Studio Ready</div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
+  <script>
+    let allData = [];
+
+    const scriptID = "https://script.google.com/macros/s/AKfycbxKh1yvcZyG3km0kbJSeElEIh9JVxWK1UkrKnQMaepzhBOjQbxZvSpITx0Eb7tAeSUz/exec"; // Replace with your actual Apps Script ID
+
+    async function fetchData(id = "all") {
+      document.getElementById("loader").style.display = "block";
+
+      const url = `https://script.google.com/macros/s/ ${scriptID}/exec?level=4&id=${id}`;
+      try {
+        const res = await fetch(url);
+        const text = await res.text();
+
+        // If JSON response is expected, try this:
+        // const data = await res.json();
+
+        // For now, assuming text-based output
+        if (text.startsWith("Success")) {
+          // Fetch full data if 'all'
+          if (id === "all") {
+            const fullDataRes = await fetch(`https://script.google.com/macros/s/ ${scriptID}/exec?level=4&id=all`);
+            const fullText = await fullDataRes.text();
+
+            // You can parse CSV or text output here if needed
+            console.log("Full Data Response:", fullText);
+
+            // For demo, assume we're pulling from a sample JSON
+            const sampleData = [
+              { ID: "105_56_2024", SecretariatName: "Secretariat A", TotalFamilies: 1200, TotalAdopted: 450, TotalMargadarsiMobilized: 236, TotalSecretariats: 10, CoveredSecretariats: 8 },
+              { ID: "105_56_2025", SecretariatName: "Secretariat B", TotalFamilies: 1500, TotalAdopted: 700, TotalMargadarsiMobilized: 300, TotalSecretariats: 12, CoveredSecretariats: 10 },
+              { ID: "105_56_2026", SecretariatName: "Secretariat C", TotalFamilies: 1000, TotalAdopted: 800, TotalMargadarsiMobilized: 150, TotalSecretariats: 15, CoveredSecretariats: 14 }
+            ];
+
+            allData = sampleData;
+            updateDashboard();
+          }
+        } else {
+          alert("Failed to fetch data");
+        }
+
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        alert("Could not fetch data from server");
+      } finally {
+        document.getElementById("loader").style.display = "none";
+      }
+    }
+
+    function updateDashboard(filtered = allData) {
+      const totalFamilies = filtered.reduce((sum, d) => sum + (parseInt(d.TotalFamilies) || 0), 0);
+      const totalAdopted = filtered.reduce((sum, d) => sum + (parseInt(d.TotalAdopted) || 0), 0);
+      const adoptionRate = ((totalAdopted / totalFamilies) * 100).toFixed(1) + "%";
+
+      document.getElementById('totalFamilies').textContent = totalFamilies;
+      document.getElementById('totalAdopted').textContent = totalAdopted;
+      document.getElementById('adoptionRate').textContent = adoptionRate;
+
+      const labels = filtered.map(d => d.SecretariatName || d.ID);
+      const datasets = [
+        {
+          label: 'Families',
+          data: filtered.map(d => d.TotalFamilies),
+          backgroundColor: 'rgba(103, 58, 183, 0.6)'
+        },
+        {
+          label: 'Adopted',
+          data: filtered.map(d => d.TotalAdopted),
+          backgroundColor: 'rgba(255, 87, 34, 0.6)'
+        }
+      ];
+
+      if (window.secretariatChart) window.secretariatChart.destroy();
+
+      const ctx = document.getElementById('secretariatChart').getContext('2d');
+      window.secretariatChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'top' },
+            title: { display: true, text: 'Families vs Adopted by Secretariat' }
+          }
+        }
+      });
+
+      populateTable(filtered);
+    }
+
+    function populateTable(data) {
+      const tbody = document.querySelector("#dataTable tbody");
+      tbody.innerHTML = "";
+      data.forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.ID}</td>
+          <td>${row.SecretariatName || "N/A"}</td>
+          <td>${row.TotalFamilies}</td>
+          <td>${row.TotalAdopted}</td>
+          <td>${row.TotalMargadarsiMobilized}</td>
+          <td>${row.CoveredSecretariats || 0} / ${row.TotalSecretariats || 0}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterTable() {
+      const filter = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = allData.filter(d =>
+        d.ID.toLowerCase().includes(filter) ||
+        (d.SecretariatName && d.SecretariatName.toLowerCase().includes(filter))
+      );
+      updateDashboard(filtered);
+    }
+
+    function populateIdDropdown() {
+      const select = document.getElementById("idSelect");
+      const uniqueIDs = [...new Set(allData.map(d => d.ID))];
+
+      select.innerHTML = '<option value="all">All Secretariats</option>';
+      uniqueIDs.forEach(id => {
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = id;
+        select.appendChild(option);
+      });
+    }
+
+    // Initial load
+    window.onload = () => {
+      fetchData(); // Load sample data or real API
+    };
+  </script>
+</body>
+</html>
