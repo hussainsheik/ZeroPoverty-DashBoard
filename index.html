@@ -490,7 +490,10 @@
             // Add glow effects
             createGlowEffects();
             
-            // Load data from Google Sheets
+            // Initialize empty charts first
+            initializeCharts();
+            
+            // Then load data
             await loadData();
             
             // Initialize filters
@@ -498,9 +501,6 @@
             
             // Apply initial filters
             filterData();
-            
-            // Initialize charts
-            initializeCharts();
         });
 
         // Create decorative glow effects
@@ -524,215 +524,84 @@
         // Load data from Google Sheets
         async function loadData() {
             try {
-                // Show loading state
-                document.querySelectorAll('.chart-container').forEach(container => {
-                    container.innerHTML = '<div class="loading">Loading data...</div>';
-                });
+                showLoadingState();
                 
                 // Replace with your actual Google Sheet ID and sheet name
                 const sheetId = '14iegStGgs20yLRkPDpds1oms8aLhuSOFxm1aE-d7tEE';
                 const sheetName = 'SecretariatData';
                 
-                // Construct the URL to fetch the data as CSV
-                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${sheetName}`;
+                // Using JSON endpoint for more reliable data
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
                 
-                // Fetch the data
                 const response = await fetch(url);
-                const csvData = await response.text();
+                const text = await response.text();
+                const jsonText = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]+)\);/)[1];
+                const jsonData = JSON.parse(jsonText);
                 
-                // Parse CSV data
-                allData = parseCSV(csvData);
+                // Process the JSON data
+                processSheetData(jsonData);
                 
-                // Process the data
-                processData();
-                
-                // Hide loading state
-                document.querySelectorAll('.chart-container').forEach(container => {
-                    container.innerHTML = '<canvas></canvas>';
-                });
+                hideLoadingState();
             } catch (error) {
                 console.error('Error loading data:', error);
-                alert('Failed to load data. Please check console for details.');
-                
-                // Show error state
-                document.querySelectorAll('.chart-container').forEach(container => {
-                    container.innerHTML = '<div class="loading" style="color: var(--accent)">Error loading data</div>';
-                });
+                showErrorState();
             }
         }
 
-        // Parse CSV data into an array of objects
-        function parseCSV(csv) {
-            const lines = csv.split('\n');
-            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        function processSheetData(jsonData) {
+            const cols = jsonData.table.cols;
+            const rows = jsonData.table.rows;
             
-            return lines.slice(1).map(line => {
-                const values = line.split(',');
-                const obj = {};
-                
-                headers.forEach((header, i) => {
-                    // Clean up the value by removing quotes and trimming whitespace
-                    let value = values[i] ? values[i].trim().replace(/"/g, '') : '';
-                    
-                    // Convert numeric values to numbers
-                    if (!isNaN(value) && value !== '') {
-                        value = Number(value);
-                    }
-                    
-                    obj[header] = value;
+            // Get column headers
+            const headers = cols.map(col => col.label);
+            
+            // Process rows
+            allData = rows.map(row => {
+                const item = {};
+                row.c.forEach((cell, index) => {
+                    const header = headers[index];
+                    item[header] = cell ? (cell.v !== undefined ? cell.v : null) : null;
                 });
                 
-                return obj;
-            });
-        }
-
-        // Process the loaded data
-        function processData() {
-            // Add mandal names based on ID
-            allData.forEach(item => {
-                item.MandalName = mandalMap[item.ID] || 'Unknown';
-            });
-            
-            // Calculate coverage percentage
-            allData.forEach(item => {
+                // Add mandal name based on ID
+                if (item.ID) {
+                    item.MandalName = mandalMap[item.ID] || 'Unknown';
+                }
+                
+                // Calculate coverage percentage
                 if (item.TotalSecretariats && item.CoveredSecretariats) {
                     item.CoveragePercentage = (item.CoveredSecretariats / item.TotalSecretariats) * 100;
                 } else {
                     item.CoveragePercentage = 0;
                 }
+                
+                return item;
+            });
+            
+            console.log('Processed data:', allData);
+        }
+
+        function showLoadingState() {
+            document.querySelectorAll('.chart-container').forEach(container => {
+                container.innerHTML = '<div class="loading">Loading data...</div>';
             });
         }
 
-        // Initialize filter dropdowns
-        function initializeFilters() {
-            // Get unique mandals
-            const mandals = [...new Set(allData.map(item => item.MandalName))].sort();
-            
-            // Populate mandal filter
-            mandals.forEach(mandal => {
-                const option = document.createElement('option');
-                option.value = mandal;
-                option.textContent = mandal;
-                mandalFilter.appendChild(option);
-            });
-            
-            // Get unique secretariats
-            const secretariats = [...new Set(allData.map(item => item.SecretariatName))].sort();
-            
-            // Populate secretariat filter
-            secretariats.forEach(secretariat => {
-                const option = document.createElement('option');
-                option.value = secretariat;
-                option.textContent = secretariat;
-                secretariatFilter.appendChild(option);
-            });
-            
-            // Add event listeners
-            mandalFilter.addEventListener('change', filterData);
-            secretariatFilter.addEventListener('change', filterData);
-        }
-
-        // Filter data based on selected filters
-        function filterData() {
-            const selectedMandal = mandalFilter.value;
-            const selectedSecretariat = secretariatFilter.value;
-            
-            filteredData = allData.filter(item => {
-                const mandalMatch = selectedMandal === 'all' || item.MandalName === selectedMandal;
-                const secretariatMatch = selectedSecretariat === 'all' || item.SecretariatName === selectedSecretariat;
-                return mandalMatch && secretariatMatch;
-            });
-            
-            // Update the UI with filtered data
-            updateDashboard();
-        }
-
-        // Update the dashboard with filtered data
-        function updateDashboard() {
-            if (filteredData.length === 0) {
-                // No data to display
-                document.getElementById('total-families').textContent = '0';
-                document.getElementById('total-members').textContent = '0';
-                document.getElementById('adoption-rate').textContent = '0%';
-                
-                document.getElementById('families-progress').style.width = '0%';
-                document.getElementById('members-progress').style.width = '0%';
-                document.getElementById('adoption-progress').style.width = '0%';
-                
-                dataTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center">No data available for selected filters</td></tr>';
-                
-                // Clear charts if they exist
-                if (familiesChart) familiesChart.data.datasets[0].data = [];
-                if (adoptionChart) adoptionChart.data.datasets[0].data = [];
-                if (comparisonChart) comparisonChart.data.datasets = [];
-                
-                return;
-            }
-            
-            // Calculate totals
-            const totalFamilies = filteredData.reduce((sum, item) => sum + (item.TotalFamilies || 0), 0);
-            const totalMembers = filteredData.reduce((sum, item) => sum + (item.TotalFamilyMembers || 0), 0);
-            const totalAdopted = filteredData.reduce((sum, item) => sum + (item.TotalAdopted || 0), 0);
-            const totalYetToAdopt = filteredData.reduce((sum, item) => sum + (item.TotalBangaruKutumbamYetToAdopt || 0), 0);
-            
-            // Calculate adoption rate
-            const adoptionRate = totalFamilies > 0 ? (totalAdopted / totalFamilies) * 100 : 0;
-            
-            // Update summary cards
-            document.getElementById('total-families').textContent = totalFamilies.toLocaleString();
-            document.getElementById('total-members').textContent = totalMembers.toLocaleString();
-            document.getElementById('adoption-rate').textContent = `${adoptionRate.toFixed(1)}%`;
-            
-            // Update progress bars (using arbitrary max values for visualization)
-            document.getElementById('families-progress').style.width = `${Math.min(100, totalFamilies / 1000 * 100)}%`;
-            document.getElementById('members-progress').style.width = `${Math.min(100, totalMembers / 5000 * 100)}%`;
-            document.getElementById('adoption-progress').style.width = `${adoptionRate}%`;
-            
-            // Update data table
-            updateDataTable();
-            
-            // Update charts
-            updateCharts();
-        }
-
-        // Update the data table
-        function updateDataTable() {
-            dataTableBody.innerHTML = '';
-            
-            filteredData.forEach(item => {
-                const row = document.createElement('tr');
-                
-                // Calculate adoption percentage
-                const adoptionPercentage = item.TotalFamilies > 0 
-                    ? (item.TotalAdopted / item.TotalFamilies) * 100 
-                    : 0;
-                
-                // Calculate coverage percentage
-                const coveragePercentage = item.TotalSecretariats > 0 
-                    ? (item.CoveredSecretariats / item.TotalSecretariats) * 100 
-                    : 0;
-                
-                row.innerHTML = `
-                    <td>${item.SecretariatName || 'N/A'}</td>
-                    <td>${item.MandalName || 'N/A'}</td>
-                    <td>${item.TotalFamilies?.toLocaleString() || '0'}</td>
-                    <td>${item.TotalFamilyMembers?.toLocaleString() || '0'}</td>
-                    <td>${item.TotalAdopted?.toLocaleString() || '0'} (${adoptionPercentage.toFixed(1)}%)</td>
-                    <td>${item.TotalBangaruKutumbamYetToAdopt?.toLocaleString() || '0'}</td>
-                    <td>${item.TotalMargadarsiMobilized?.toLocaleString() || '0'}</td>
-                    <td>
-                        ${coveragePercentage.toFixed(1)}%
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${coveragePercentage}%"></div>
-                        </div>
-                    </td>
-                `;
-                
-                dataTableBody.appendChild(row);
+        function hideLoadingState() {
+            document.querySelectorAll('.chart-container').forEach(container => {
+                if (container.querySelector('canvas') === null) {
+                    container.innerHTML = '<canvas></canvas>';
+                }
             });
         }
 
-        // Initialize charts
+        function showErrorState() {
+            document.querySelectorAll('.chart-container').forEach(container => {
+                container.innerHTML = '<div class="loading" style="color: var(--accent)">Error loading data</div>';
+            });
+        }
+
+        // Initialize charts with empty data
         function initializeCharts() {
             // Families Chart (Bar Chart)
             const familiesCtx = document.getElementById('families-chart').getContext('2d');
@@ -748,36 +617,7 @@
                         borderWidth: 1
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'var(--chart-grid)'
-                            },
-                            ticks: {
-                                color: 'var(--light)'
-                            }
-                        },
-                        x: {
-                            grid: {
-                                color: 'var(--chart-grid)'
-                            },
-                            ticks: {
-                                color: 'var(--light)'
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            labels: {
-                                color: 'var(--light)'
-                            }
-                        }
-                    }
-                }
+                options: getChartOptions('Families per Secretariat')
             });
             
             // Adoption Chart (Doughnut)
@@ -821,76 +661,314 @@
                     labels: ['Families', 'Members', 'Adopted', 'Yet to Adopt', 'Mobilized', 'Coverage'],
                     datasets: []
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        r: {
-                            angleLines: {
-                                color: 'var(--chart-grid)'
-                            },
-                            grid: {
-                                color: 'var(--chart-grid)'
-                            },
-                            pointLabels: {
-                                color: 'var(--light)'
-                            },
-                            ticks: {
-                                backdropColor: 'transparent',
-                                color: 'var(--light)'
-                            }
+                options: getRadarChartOptions()
+            });
+        }
+
+        function getChartOptions(title) {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: title,
+                        color: 'var(--light)',
+                        font: {
+                            size: 16
                         }
                     },
-                    plugins: {
-                        legend: {
-                            labels: {
-                                color: 'var(--light)'
-                            }
+                    legend: {
+                        labels: {
+                            color: 'var(--light)'
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'var(--chart-grid)'
+                        },
+                        ticks: {
+                            color: 'var(--light)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'var(--chart-grid)'
+                        },
+                        ticks: {
+                            color: 'var(--light)'
                         }
                     }
                 }
+            };
+        }
+
+        function getRadarChartOptions() {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Secretariat Comparison',
+                        color: 'var(--light)',
+                        font: {
+                            size: 16
+                        }
+                    },
+                    legend: {
+                        labels: {
+                            color: 'var(--light)'
+                        }
+                    }
+                },
+                scales: {
+                    r: {
+                        angleLines: {
+                            color: 'var(--chart-grid)'
+                        },
+                        grid: {
+                            color: 'var(--chart-grid)'
+                        },
+                        pointLabels: {
+                            color: 'var(--light)'
+                        },
+                        ticks: {
+                            backdropColor: 'transparent',
+                            color: 'var(--light)',
+                            beginAtZero: true
+                        }
+                    }
+                }
+            };
+        }
+
+        // Initialize filter dropdowns
+        function initializeFilters() {
+            // Get unique mandals
+            const mandals = [...new Set(allData.map(item => item.MandalName))].sort();
+            
+            // Populate mandal filter
+            mandals.forEach(mandal => {
+                const option = document.createElement('option');
+                option.value = mandal;
+                option.textContent = mandal;
+                mandalFilter.appendChild(option);
+            });
+            
+            // Update secretariat filter based on selected mandal
+            updateSecretariatFilter();
+            
+            // Add event listeners
+            mandalFilter.addEventListener('change', () => {
+                updateSecretariatFilter();
+                filterData();
+            });
+            secretariatFilter.addEventListener('change', filterData);
+        }
+
+        // Update secretariat filter based on selected mandal
+        function updateSecretariatFilter() {
+            const selectedMandal = mandalFilter.value;
+            
+            // Clear existing options
+            secretariatFilter.innerHTML = '<option value="all">All Secretariats</option>';
+            
+            // Filter secretariats based on selected mandal
+            let secretariats;
+            if (selectedMandal === 'all') {
+                secretariats = [...new Set(allData.map(item => item.SecretariatName))];
+            } else {
+                secretariats = [...new Set(allData
+                    .filter(item => item.MandalName === selectedMandal)
+                    .map(item => item.SecretariatName))];
+            }
+            
+            // Sort and add to dropdown
+            secretariats.sort().forEach(secretariat => {
+                const option = document.createElement('option');
+                option.value = secretariat;
+                option.textContent = secretariat;
+                secretariatFilter.appendChild(option);
+            });
+        }
+
+        // Filter data based on selected filters
+        function filterData() {
+            const selectedMandal = mandalFilter.value;
+            const selectedSecretariat = secretariatFilter.value;
+            
+            filteredData = allData.filter(item => {
+                const mandalMatch = selectedMandal === 'all' || item.MandalName === selectedMandal;
+                const secretariatMatch = selectedSecretariat === 'all' || item.SecretariatName === selectedSecretariat;
+                return mandalMatch && secretariatMatch;
+            });
+            
+            // Update the UI with filtered data
+            updateDashboard();
+        }
+
+        // Update the dashboard with filtered data
+        function updateDashboard() {
+            if (filteredData.length === 0) {
+                // No data to display
+                resetDashboard();
+                return;
+            }
+            
+            // Calculate totals
+            const totalFamilies = filteredData.reduce((sum, item) => sum + (item.TotalFamilies || 0), 0);
+            const totalMembers = filteredData.reduce((sum, item) => sum + (item.TotalFamilyMembers || 0), 0);
+            const totalAdopted = filteredData.reduce((sum, item) => sum + (item.TotalAdopted || 0), 0);
+            const totalYetToAdopt = filteredData.reduce((sum, item) => sum + (item.TotalBangaruKutumbamYetToAdopt || 0), 0);
+            
+            // Calculate adoption rate
+            const adoptionRate = totalFamilies > 0 ? (totalAdopted / totalFamilies) * 100 : 0;
+            
+            // Update summary cards
+            document.getElementById('total-families').textContent = totalFamilies.toLocaleString();
+            document.getElementById('total-members').textContent = totalMembers.toLocaleString();
+            document.getElementById('adoption-rate').textContent = `${adoptionRate.toFixed(1)}%`;
+            
+            // Update progress bars (using arbitrary max values for visualization)
+            document.getElementById('families-progress').style.width = `${Math.min(100, totalFamilies / 1000 * 100)}%`;
+            document.getElementById('members-progress').style.width = `${Math.min(100, totalMembers / 5000 * 100)}%`;
+            document.getElementById('adoption-progress').style.width = `${adoptionRate}%`;
+            
+            // Update data table
+            updateDataTable();
+            
+            // Update charts
+            updateCharts();
+        }
+
+        function resetDashboard() {
+            document.getElementById('total-families').textContent = '0';
+            document.getElementById('total-members').textContent = '0';
+            document.getElementById('adoption-rate').textContent = '0%';
+            
+            document.getElementById('families-progress').style.width = '0%';
+            document.getElementById('members-progress').style.width = '0%';
+            document.getElementById('adoption-progress').style.width = '0%';
+            
+            dataTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center">No data available for selected filters</td></tr>';
+            
+            resetCharts();
+        }
+
+        function resetCharts() {
+            // Families Chart
+            familiesChart.data.labels = [];
+            familiesChart.data.datasets[0].data = [];
+            familiesChart.update();
+            
+            // Adoption Chart
+            adoptionChart.data.datasets[0].data = [0, 0];
+            adoptionChart.update();
+            
+            // Comparison Chart
+            comparisonChart.data.datasets = [];
+            comparisonChart.update();
+        }
+
+        // Update the data table
+        function updateDataTable() {
+            dataTableBody.innerHTML = '';
+            
+            filteredData.forEach(item => {
+                const row = document.createElement('tr');
+                
+                // Calculate adoption percentage
+                const adoptionPercentage = item.TotalFamilies > 0 
+                    ? (item.TotalAdopted / item.TotalFamilies) * 100 
+                    : 0;
+                
+                // Calculate coverage percentage
+                const coveragePercentage = item.TotalSecretariats > 0 
+                    ? (item.CoveredSecretariats / item.TotalSecretariats) * 100 
+                    : 0;
+                
+                row.innerHTML = `
+                    <td>${item.SecretariatName || 'N/A'}</td>
+                    <td>${item.MandalName || 'N/A'}</td>
+                    <td>${item.TotalFamilies?.toLocaleString() || '0'}</td>
+                    <td>${item.TotalFamilyMembers?.toLocaleString() || '0'}</td>
+                    <td>${item.TotalAdopted?.toLocaleString() || '0'} (${adoptionPercentage.toFixed(1)}%)</td>
+                    <td>${item.TotalBangaruKutumbamYetToAdopt?.toLocaleString() || '0'}</td>
+                    <td>${item.TotalMargadarsiMobilized?.toLocaleString() || '0'}</td>
+                    <td>
+                        ${coveragePercentage.toFixed(1)}%
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${coveragePercentage}%"></div>
+                        </div>
+                    </td>
+                `;
+                
+                dataTableBody.appendChild(row);
             });
         }
 
         // Update charts with filtered data
         function updateCharts() {
-            if (filteredData.length === 0) return;
-            
             // Update Families Chart
-            familiesChart.data.labels = filteredData.map(item => item.SecretariatName);
+            updateFamiliesChart();
+            
+            // Update Adoption Chart
+            updateAdoptionChart();
+            
+            // Update Comparison Chart
+            updateComparisonChart();
+        }
+
+        function updateFamiliesChart() {
+            familiesChart.data.labels = filteredData.map(item => item.SecretariatName || 'Unnamed');
             familiesChart.data.datasets[0].data = filteredData.map(item => item.TotalFamilies || 0);
             familiesChart.update();
-            
-            // Calculate totals for Adoption Chart
+        }
+
+        function updateAdoptionChart() {
             const totalAdopted = filteredData.reduce((sum, item) => sum + (item.TotalAdopted || 0), 0);
             const totalYetToAdopt = filteredData.reduce((sum, item) => sum + (item.TotalBangaruKutumbamYetToAdopt || 0), 0);
             
             adoptionChart.data.datasets[0].data = [totalAdopted, totalYetToAdopt];
             adoptionChart.update();
+        }
+
+        function updateComparisonChart() {
+            const labels = ['TotalFamilies', 'TotalFamilyMembers', 'TotalAdopted', 
+                           'TotalBangaruKutumbamYetToAdopt', 'TotalMargadarsiMobilized', 
+                           'CoveragePercentage'];
+            const labelNames = ['Families', 'Members', 'Adopted', 'Yet to Adopt', 'Mobilized', 'Coverage'];
             
-            // Update Comparison Chart
-            const comparisonDatasets = filteredData.map(item => {
-                const randomColor = `hsl(${Math.random() * 360}, 70%, 50%)`;
-                
+            // Limit to 5 secretariats for better radar chart readability
+            const displayData = filteredData.slice(0, 5);
+            
+            comparisonChart.data.labels = labelNames;
+            comparisonChart.data.datasets = displayData.map(item => {
+                const color = getRandomColor();
                 return {
-                    label: item.SecretariatName,
-                    data: [
-                        item.TotalFamilies || 0,
-                        item.TotalFamilyMembers || 0,
-                        item.TotalAdopted || 0,
-                        item.TotalBangaruKutumbamYetToAdopt || 0,
-                        item.TotalMargadarsiMobilized || 0,
-                        item.CoveragePercentage || 0
-                    ],
-                    backgroundColor: `rgba(${hexToRgb(randomColor)}, 0.2)`,
-                    borderColor: randomColor,
+                    label: item.SecretariatName || 'Unnamed',
+                    data: labels.map(label => {
+                        const value = item[label] || 0;
+                        // Normalize values to similar scale (0-100)
+                        if (label === 'CoveragePercentage') return value;
+                        return Math.min(100, value / 100); // Adjust divisor based on your data scale
+                    }),
+                    backgroundColor: `rgba(${hexToRgb(color)}, 0.2)`,
+                    borderColor: color,
                     borderWidth: 1,
-                    pointBackgroundColor: randomColor
+                    pointBackgroundColor: color
                 };
             });
-            
-            comparisonChart.data.datasets = comparisonDatasets;
             comparisonChart.update();
+        }
+
+        function getRandomColor() {
+            const hue = Math.floor(Math.random() * 360);
+            return `hsl(${hue}, 70%, 50%)`;
         }
 
         // Helper function to convert hex color to rgb
